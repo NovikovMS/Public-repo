@@ -1,0 +1,494 @@
+
+
+```python
+import pandas as pd
+import os
+import pickle
+import datetime
+from sklearn.feature_selection import chi2, SelectKBest
+from sklearn.pipeline import Pipeline, FeatureUnion
+#from sklearn.impute import SimpleImputer as Imputer  # new numpy version
+from sklearn.preprocessing import Imputer
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.multiclass import OneVsRestClassifier
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+import xgboost as xgb
+from sklearn.preprocessing import MaxAbsScaler, StandardScaler
+from sklearn.metrics import f1_score, roc_auc_score, log_loss, accuracy_score
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import FunctionTransformer
+from functions import GetPreprocessedData, dummify_labels, undummify_labels
+from functions import get_numeric_data_func, get_text_data_func, parallelize
+from functions import recover_index, project_accuracy
+from tqdm import tqdm
+
+```
+
+
+```python
+# Логи пользователей. Надо предсказать их пол (M, F) и возраст (18-24, 25-34, 35-44, 45-54, >=55).
+!head -n 10 train_df.csv
+```
+
+    gender,age,uid,user_json
+    F,18-24,d50192e5-c44e-4ae8-ae7a-7cfe67c8b777,"{""visits"": [{""url"": ""http://zebra-zoya.ru/200028-chehol-organayzer-dlja-macbook-11-grid-it.html?utm_campaign=397720794&utm_content=397729344&utm_medium=cpc&utm_source=begun"", ""timestamp"": 1419688144068}, {""url"": ""http://news.yandex.ru/yandsearch?cl4url=chezasite.com/htc/htc-one-m9-delay-86327.html&lr=213&rpt=story"", ""timestamp"": 1426666298001}, {""url"": ""http://www.sotovik.ru/news/240283-htc-one-m9-zaderzhivaetsja.html"", ""timestamp"": 1426666298000}, {""url"": ""http://news.yandex.ru/yandsearch?cl4url=chezasite.com/htc/htc-one-m9-delay-86327.html&lr=213&rpt=story"", ""timestamp"": 1426661722001}, {""url"": ""http://www.sotovik.ru/news/240283-htc-one-m9-zaderzhivaetsja.html"", ""timestamp"": 1426661722000}]}"
+    M,25-34,d502331d-621e-4721-ada2-5d30b2c3801f,"{""visits"": [{""url"": ""http://sweetrading.ru/?p=900"", ""timestamp"": 1419717886224}, {""url"": ""http://sweetrading.ru/?p=884"", ""timestamp"": 1419717884437}, {""url"": ""http://sweetrading.ru/?p=1002"", ""timestamp"": 1419717816375}, {""url"": ""http://101.ru/?an=port_channel_mp3"", ""timestamp"": 1419717804934}, {""url"": ""http://sweetrading.ru/?cat=62"", ""timestamp"": 1419714194423}, {""url"": ""http://sweetrading.ru/?p=1046"", ""timestamp"": 1419713998481}, {""url"": ""http://sweetrading.ru/?p=978"", ""timestamp"": 1419713927085}, {""url"": ""http://sweetrading.ru/?cat=171"", ""timestamp"": 1419713908863}, {""url"": ""http://sweetrading.ru/?cat=62"", ""timestamp"": 1419713908679}, {""url"": ""http://sweetrading.ru/?p=3648"", ""timestamp"": 1419713798879}, {""url"": ""http://oesex.ru/955457"", ""timestamp"": 1419595564407}, {""url"": ""http://www.interfax.ru/russia/408800"", ""timestamp"": 1419542965224}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=30"", ""timestamp"": 1418818241900}, {""url"": ""http://www.interfax.ru/russia/413508"", ""timestamp"": 1418802080857}, {""url"": ""http://www.euroavtoprokat.ru/sitemap/car-rental/france.htm"", ""timestamp"": 1418722961181}, {""url"": ""http://www.euroavtoprokat.ru/sitemap/car-rental.htm"", ""timestamp"": 1418722945825}, {""url"": ""http://www.euroavtoprokat.ru/car-rental/germany.htm"", ""timestamp"": 1418722937847}, {""url"": ""http://www.euroavtoprokat.ru/car-rental/germany.htm"", ""timestamp"": 1418722923196}, {""url"": ""http://www.euroavtoprokat.ru/sitemap/car-rental.htm"", ""timestamp"": 1418722909804}, {""url"": ""http://www.eavtoprokat.ru/prokat-avto/france"", ""timestamp"": 1418646101953}, {""url"": ""http://www.wordparts.ru/numeral/"", ""timestamp"": 1418592793587}, {""url"": ""http://rsdn.ru/forum/alg/3305190.flat"", ""timestamp"": 1418591162814}, {""url"": ""http://www.euroavtoprokat.ru/car-rental/turkey/istanbul.htm"", ""timestamp"": 1418571531780}, {""url"": ""http://citieslist.ru/"", ""timestamp"": 1418488992092}, {""url"": ""http://www.euroavtoprokat.ru/car-rental/turkey/istanbul.htm"", ""timestamp"": 1418480798674}, {""url"": ""http://rutv.ru/brand/show/episode/453757"", ""timestamp"": 1418253037406}, {""url"": ""http://www.fodors.com/community/europe/best-car-rental-company-in-italy.cfm"", ""timestamp"": 1418247198586}, {""url"": ""http://wheelsabroad.com/car-rental/united-kingdom/england/london?gclid=cjwkeaia-5-kbrdylpg5096r8masjabqedm4cmiichc-_-ewkbtsqyci5bu9ucwvjmxp4o0tficaarocljdw_wcb"", ""timestamp"": 1418245144696}, {""url"": ""http://lestinet.com/site/stopagent.ru"", ""timestamp"": 1418243376170}, {""url"": ""http://android-help.ru/q2a/16774/\u043a\u0430\u043a-\u043f\u043e\u043b\u0443\u0447\u0438\u0442\u044c-root-\u043f\u0440\u0430\u0432\u0430-\u043d\u0430-philips-w832-android-4-0-4"", ""timestamp"": 1418169606439}, {""url"": ""http://club.dns-shop.ru/rabinovich/blog/\u044f-\u0432\u0441\u0435-\u0435\u0449\u0435-\u0434\u0435\u0440\u0436\u0443\u0441\u044c-\u043e\u0431\u0437\u043e\u0440-\u0441\u043c\u0430\u0440\u0442\u0444\u043e\u043d\u0430-philips-xenium-w832/"", ""timestamp"": 1418169602505}, {""url"": ""http://www.supportforum.philips.com/ru/showthread.php?1529-philips-xenium-w832/page6"", ""timestamp"": 1418167859617}, {""url"": ""http://www.supportforum.philips.com/ru/showthread.php?842-\u043d\u0435-\u0440\u0430\u0431\u043e\u0442\u0430\u0435\u0442-gps-\u0432-\u0441\u043c\u0430\u0440\u0442\u0444\u043e\u043d\u0435-philips-xenium-w832"", ""timestamp"": 1418166430112}, {""url"": ""http://rabota.ua/info/jobsearcher/post/umora.aspx"", ""timestamp"": 1418114698621}, {""url"": ""http://www.enter.ru/product/appliances/myasorubka-philips-hr2728-2020103007131"", ""timestamp"": 1418053557067}, {""url"": ""http://www.ferra.ru/ru/byt/news/2013/12/02/polaris-pmg-1805/"", ""timestamp"": 1417866883735}, {""url"": ""http://www.ferra.ru/ru/byt/news/2013/10/12/bosch-mfw6-propower/"", ""timestamp"": 1417862586856}, {""url"": ""http://www.linotype.com/1266/neuehelvetica-family.html"", ""timestamp"": 1417856979616}, {""url"": ""http://www.linotype.com/1546/tradegothic-family.html?site=webfonts"", ""timestamp"": 1417812010753}, {""url"": ""http://www.vandelaydesign.com/best-ecommerce-website-designs/"", ""timestamp"": 1417807232287}, {""url"": ""http://www.awwwards.com/20-of-the-very-best-e-commerce-web-sites.html"", ""timestamp"": 1417805189928}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=82"", ""timestamp"": 1417711286305}, {""url"": ""http://www.just.ru/myasorubki/56658_elektromyasorybky_kenwood_mg_450/?from=yandex_msk&utm_source=yandex&utm_medium=cpc&utm_campaign=10817239_model_bytovaya-tehnika-melkaya_msk_p_api&utm_content=612422293_2792852770_\u043c\u044f\u0441\u043e\u0440\u0443\u0431\u043a\u0443 mg 450&position_type=premi"", ""timestamp"": 1417701042306}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=5"", ""timestamp"": 1417695760398}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=5"", ""timestamp"": 1417689964129}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=17"", ""timestamp"": 1417683034834}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417608945879}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=24"", ""timestamp"": 1417605700777}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=24"", ""timestamp"": 1417605639264}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=82"", ""timestamp"": 1417605624817}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg470-meat-grinder-0wmg470008"", ""timestamp"": 1417604804579}, {""url"": ""http://livedemo00.template-help.com/magento_48517/blackberry-bold-9000-phone.html"", ""timestamp"": 1417604730951}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg470-meat-grinder-0wmg470008"", ""timestamp"": 1417548651645}, {""url"": ""http://www.kenwoodworld.com/en-int/products/blenders/meat-grinders/mg474-meat-grinder"", ""timestamp"": 1417548321763}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417548310507}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417548309162}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?feat=6405fda1-43cc-42cc-8860-1c2a492555c5&tabsegment=key-features"", ""timestamp"": 1417548297576}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?tabsegment=key-features"", ""timestamp"": 1417548284970}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417548264964}, {""url"": ""http://www.kenwoodworld.com/en-int/products/blenders/meat-grinders"", ""timestamp"": 1417546314287}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg700-meat-grinder-0wmg700006"", ""timestamp"": 1417545459520}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg700-meat-grinder-0wmg700006"", ""timestamp"": 1417545200191}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/kmix-by-kenwood/kmix-kitchen-machines-/kmx51-kmix-kitchen-machine-0wkmx51002"", ""timestamp"": 1417545116313}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/---mg517---0wmg517007"", ""timestamp"": 1417544991760}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417544967371}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?feat=ac86d868-3ea4-4523-93e1-885bbf4222cd&tabsegment=key-features"", ""timestamp"": 1417544772661}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?feat=3a288c22-e5f2-448e-a573-ccde95fd2341&tabsegment=key-features"", ""timestamp"": 1417544765049}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?feat=ac86d868-3ea4-4523-93e1-885bbf4222cd&tabsegment=key-features"", ""timestamp"": 1417544748628}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001?tabsegment=key-features"", ""timestamp"": 1417544731238}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417544522237}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417544351791}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/-mg350-0w21910001"", ""timestamp"": 1417544282950}, {""url"": ""http://www.kenwoodworld.com/ru-ru"", ""timestamp"": 1417544269909}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg516-meat-grinder-and-roto-food-cutter-0wmg516006?tabsegment=specifications"", ""timestamp"": 1417544204394}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg516-meat-grinder-and-roto-food-cutter-0wmg516006"", ""timestamp"": 1417544190747}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg516-meat-grinder-and-roto-food-cutter-0wmg516006"", ""timestamp"": 1417544045014}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg516-meat-grinder-and-roto-food-cutter-0wmg516006?tabsegment=specifications"", ""timestamp"": 1417544035023}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg516-meat-grinder-and-roto-food-cutter-0wmg516006"", ""timestamp"": 1417544015196}, {""url"": ""http://www.kenwoodworld.com/ru-ru"", ""timestamp"": 1417544004579}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009?tabsegment=specifications"", ""timestamp"": 1417543914820}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543814629}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543642699}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543628088}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543616074}, {""url"": ""http://www.kenwoodworld.com/uk/products/food-mixers/chef-major-attachments/potato-peeler-at444-awat444001"", ""timestamp"": 1417543439173}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543352117}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543294005}, {""url"": ""http://www.kenwoodworld.com/uk/search-results"", ""timestamp"": 1417543192107}, {""url"": ""http://www.kenwoodworld.com/uk"", ""timestamp"": 1417543022466}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009?tabsegment=specifications"", ""timestamp"": 1417542940415}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009?tabsegment=support"", ""timestamp"": 1417542907491}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009?tabsegment=specifications"", ""timestamp"": 1417542866623}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542858206}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542839578}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542795850}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542742883}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542725367}, {""url"": ""http://www.kenwoodworld.com/ru-ru/all-products/blenders-mixers-and-meat-grinders/meat-grinders-ru/mg510-meat-grinder-0wmg510009"", ""timestamp"": 1417542659966}, {""url"": ""http://www.kenwoodworld.com/ru-ru"", ""timestamp"": 1417542501523}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=24"", ""timestamp"": 1417542435930}, {""url"": ""http://www.shop-script.ru/platform/"", ""timestamp"": 1417473193974}, {""url"": ""http://101.ru/?an=port_channel_mp3&channel=34"", ""timestamp"": 1417451297674}]}"
+    F,25-34,d50237ea-747e-48a2-ba46-d08e71dddfdb,"{""visits"": [{""url"": ""http://ru.oriflame.com/products/product?code=30569"", ""timestamp"": 1418840296062}, {""url"": ""http://ru.oriflame.com/products/product?code=31164"", ""timestamp"": 1418667832733}, {""url"": ""http://ru.oriflame.com/products/product?code=31164"", ""timestamp"": 1418667717223}, {""url"": ""http://ru.oriflame.com/products/product?code=30596"", ""timestamp"": 1418667704255}, {""url"": ""http://ru.oriflame.com/products/product?code=31164"", ""timestamp"": 1418667679975}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426952594001}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426952594000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426951625001}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426951625000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/id63054/"", ""timestamp"": 1426951617001}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426951617000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426951610000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426951609001}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426951609000}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426951589001}, {""url"": ""http://rusbiathlon.ru/"", ""timestamp"": 1426951589000}, {""url"": ""http://adme.ru"", ""timestamp"": 1426951348000}, {""url"": ""http://adme.ru"", ""timestamp"": 1426951347000}, {""url"": ""http://adme.ru"", ""timestamp"": 1426951346000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426862540000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426862539001}, {""url"": ""http://rusbiathlon.ru/results/biathlon/id63324/"", ""timestamp"": 1426862539000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/id63324/"", ""timestamp"": 1426862329001}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426862329000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426862323001}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426862323000}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426862294001}, {""url"": ""http://rusbiathlon.ru/"", ""timestamp"": 1426862294000}, {""url"": ""http://povar.ru/recipes/makarony_s_ovoshami-18185.html"", ""timestamp"": 1426775341000}, {""url"": ""http://cdn.etgdta.com/etgifrm/creative/static/522467.htm?geohiturl=http://www.etgdta.com/lg.gif?tp=hitgeo&ac=4896342&cp=522612&uuid=81516d7b-c443-4808-9a87-493c34735a02&burst=48391&clickurl=http://cdn.etgdta.com/etgifrm/click/4896343-b3c5f6.htm?ac=4896343&cp=522612&zn=522154&cv=522467&r=h_n-zdxdsc4&c=h_n-zdxdsc4&redirect=&clickurl_noredirect=http://cdn.etgdta.com/etgifrm/click/4896343-b3c5f6.htm?ac=4896343&cp=522612&zn=522154&cv=522467&r=h_n-zdxdsc4&c=h_n-zdxdsc4&feedurl=http://prod.etgdta.com/feed?id=null&product=&dataprotection=&cus=13598"", ""timestamp"": 1426692792000}, {""url"": ""http://rmbn.net/cgi-bin/main.fcgi?place_id=255&0.9749965623486787"", ""timestamp"": 1426692772000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426689639000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426689635000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426689621000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426689620000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426689538000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/id63218/"", ""timestamp"": 1426689537001}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426689537000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426689534000}, {""url"": ""http://rusbiathlon.ru/results/biathlon/"", ""timestamp"": 1426689533001}, {""url"": ""http://rusbiathlon.ru/tv/biathlon/"", ""timestamp"": 1426689533000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426689193000}, {""url"": ""http://rusbiathlon.ru/news/biathlon/id63223/"", ""timestamp"": 1426689185001}, {""url"": ""http://rusbiathlon.ru/"", ""timestamp"": 1426689185000}]}"
+    F,25-34,d502f29f-d57a-46bf-8703-1cb5f8dcdf03,"{""visits"": [{""url"": ""http://translate-tattoo.ru/font-selection/?hash=1199c573a5f4da47ed3706b486fa55cc"", ""timestamp"": 1418217864467}, {""url"": ""http://www.nadietah.ru/node/224803"", ""timestamp"": 1418124701342}, {""url"": ""http://www.1obl.ru/news/o-lyudyakh/propavshaya-5-dney-nazad-naydena-zhivoy/"", ""timestamp"": 1417866007812}, {""url"": ""http://www.1obl.ru/news/o-lyudyakh/nakanune-propazhi-17-letnyaya-uchashchayasya-kolledzha-rasstalas-s-parnem/"", ""timestamp"": 1417799730185}, {""url"": ""http://www.1obl.ru/news/khokkey/igroka-ak-barsa-nakazali-za-gryaznyy-silovoy-priem-v-m/"", ""timestamp"": 1417799691843}, {""url"": ""http://www.1obl.ru/news/proisshestviya/uchashchuyusya-kolledzha-5-dney-ishchut/"", ""timestamp"": 1417772892270}, {""url"": ""http://www.1obl.ru/news/proisshestviya/v-chelyabinske-arestovan-za-vymogatelstvo/"", ""timestamp"": 1417772840221}, {""url"": ""http://www.1obl.ru/news/proisshestviya/devushka-volonter-detskoy-studii-pogibla-v-nissan-upavshem-v-kyuvet-na-trasse-m5-/?referer1=rss"", ""timestamp"": 1417772825817}, {""url"": ""http://www.1obl.ru/news/o-lyudyakh/kyshtymskomu-pedofilu-dali-17-let-tyurmy-za-iznasilovaniya-14-letney-padcheritsy/"", ""timestamp"": 1417630332295}, {""url"": ""http://www.1obl.ru/news/proisshestviya/v-traktorozavodskom-rayone-otets-nanes-mesyachnomu-rebenku-smertelnye-uvechya/"", ""timestamp"": 1417630317341}, {""url"": ""http://www.1obl.ru/news/proisshestviya/v-traktorozavodskom-rayone-otets-nanes-mesyachnomu-rebenku-smertelnye-uvechya/"", ""timestamp"": 1417614863150}, {""url"": ""http://www.1obl.ru/news/proisshestviya/k-strakhovshchikam-chelyabinets-sbrosilsya-s-4-go-etazha-shagnuv-v-lestnichnyy-prolet/"", ""timestamp"": 1417550240865}, {""url"": ""http://www.1obl.ru/news/proisshestviya/arendatory-ubili-khozyaev-kvartir-i-spryatali-raschlenennye-trupy/"", ""timestamp"": 1417524816985}, {""url"": ""http://www.1obl.ru/news/proisshestviya/devushka-volonter-detskoy-studii-pogibla-v-nissan-upavshem-v-kyuvet-na-trasse-m5-/?referer1=rss"", ""timestamp"": 1417524738238}]}"
+    M,>=55,d503c3b2-a0c2-4f47-bb27-065058c73008,"{""visits"": [{""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1427272415001}, {""url"": ""http://news.rambler.ru/29728405/"", ""timestamp"": 1427272415000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1427271294001}, {""url"": ""http://news.rambler.ru/29728742/"", ""timestamp"": 1427271294000}, {""url"": ""http://fedpress.ru/news/polit_vlast/news_polit/1425289184-rossiiskii-flot-poluchit-avianosets-budushchego-poobeshchal-admiral-chirkov"", ""timestamp"": 1427270307001}, {""url"": ""http://ex.24smi.org/top/in/130356/1302/?i=2268&h=c0f6c64abbcd9d83ea7756374840cb47"", ""timestamp"": 1427270307000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427269329001}, {""url"": ""http://news.rambler.ru/29730226/"", ""timestamp"": 1427269329000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1427228304001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1427228304000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1427228271001}, {""url"": ""http://koreamotor.ru/cars/nalichie/?filter[model]=santa fe new&filter[state]="", ""timestamp"": 1427228271000}, {""url"": ""http://koreamotor.ru/cars/nalichie/?filter[model]=santa fe new&filter[state]="", ""timestamp"": 1427228258001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/123/"", ""timestamp"": 1427228258000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/123/"", ""timestamp"": 1427228256001}, {""url"": ""http://www.b2bsky.ru/companies/dzhenser_servis_yu17_ooo_2354522"", ""timestamp"": 1427228256000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1427227839001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1427227839000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1427227832001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1427227832000}, {""url"": ""https://id.rambler.ru/logout?back=http://rambler.ru/&rname=mail"", ""timestamp"": 1427227822001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427227822000}, {""url"": ""https://id.rambler.ru/profile?back=https://mail.rambler.ru/&rname=mail"", ""timestamp"": 1427227821001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427227821000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427227760001}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1427227760000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427227741001}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1427227741000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427227719001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhp"", ""timestamp"": 1427227719000}, {""url"": ""http://koreamotor.ru/"", ""timestamp"": 1427206397001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/"", ""timestamp"": 1427206397000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/"", ""timestamp"": 1427206378001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/123/"", ""timestamp"": 1427206378000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/123/"", ""timestamp"": 1427206367001}, {""url"": ""http://www.rusprofile.ru/id/1375783"", ""timestamp"": 1427206367000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1427202365001}, {""url"": ""http://news.rambler.ru/29719019/"", ""timestamp"": 1427202365000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1427181348001}, {""url"": ""http://news.rambler.ru/29709071/"", ""timestamp"": 1427181348000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1427180919001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhp"", ""timestamp"": 1427180919000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhp"", ""timestamp"": 1427180918001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1427180918000}, {""url"": ""http://mir24.tv/news/science/12196930"", ""timestamp"": 1426946913000}, {""url"": ""http://www.prommetizcomplect.ru/"", ""timestamp"": 1426935806001}, {""url"": ""http://www.prommetizcomplect.ru/"", ""timestamp"": 1426935806000}, {""url"": ""http://www.prommetizcomplect.ru/"", ""timestamp"": 1426935804001}, {""url"": ""http://www.prommetizcomplect.ru/"", ""timestamp"": 1426935804000}, {""url"": ""http://www.prommetizcomplect.ru/"", ""timestamp"": 1426935799001}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426935799000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426935787001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0433\u0435\u043d\u0441\u0435\u0440 \u0441\u0435\u0440\u0432\u0438\u0441 17"", ""timestamp"": 1426935787000}, {""url"": ""http://www.avtogermes.ru/sale/hyundai/"", ""timestamp"": 1426935010001}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426935010000}, {""url"": ""http://www.avtogermes.ru/sale/hyundai/"", ""timestamp"": 1426935008001}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426935008000}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426934994001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0434\u0438\u043b\u0435\u0440\u044b \u043f\u043e \u043f\u0440\u043e\u0434\u0430\u0436\u0435 \u0430\u0432\u0442\u043e \u0432 \u043c\u043e\u0441\u043a\u0432\u0435"", ""timestamp"": 1426934994000}, {""url"": ""http://www.avtogermes.ru/company/new/"", ""timestamp"": 1426934928001}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426934928000}, {""url"": ""http://www.avtogermes.ru/company/new/"", ""timestamp"": 1426934926001}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426934926000}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426934918001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0434\u0438\u043b\u0435\u0440\u044b \u043f\u043e \u043f\u0440\u043e\u0434\u0430\u0436\u0435 \u0430\u0432\u0442\u043e \u0432 \u043c\u043e\u0441\u043a\u0432\u0435"", ""timestamp"": 1426934918000}, {""url"": ""http://www.avtogermes.ru/"", ""timestamp"": 1426934876001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0434\u0438\u043b\u0435\u0440\u044b \u043f\u043e \u043f\u0440\u043e\u0434\u0430\u0436\u0435 \u0430\u0432\u0442\u043e \u0432 \u043c\u043e\u0441\u043a\u0432\u0435"", ""timestamp"": 1426934876000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426934735001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhp"", ""timestamp"": 1426934735000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhp"", ""timestamp"": 1426934730001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1426934730000}, {""url"": ""http://an.yandex.ru/count/pwgzq4q694a40000zh1br505xp3t8pk2cm5kgxs2am4pyblohs41yqzyeeko__________yfdqnr7hewyfbqhg4qsqycfxkals-w0waziq0wj0ag0qmfhhc4ar8lk5u8zxnx1ns6dxqqomw5auq9cm92z91g6a2gdoila6eob9pv4auqimiek6_iswiam00001c1h2ikyh7pm6mroh45ib-boie5ig6ow5avh7kt4xl_hzlo5lo-9mb1__________yfnoyfuxs0?test-tag=51448337"", ""timestamp"": 1426933033001}, {""url"": ""http://www.regnum.ru/news/1887724.html"", ""timestamp"": 1426933033000}, {""url"": ""http://www.regnum.ru/news/1887724.html"", ""timestamp"": 1426932913001}, {""url"": ""http://lentainform.com/pnews/3313540/i/14701/pp/1/1/?h=ug96c1dul02bbhyusx7ai-sg4e8xgvrgg9i1q-lb024r3xnrktirdxbtli68lxp9&k=fasmtqynjkzmjcyndc2mte0nzaxmtq3fbsmwexfcsmtrjm2jkmtc0mtk=fdsmtrjm2jkndi5owm=fesfgsngjifhsmtdkfisndy1fjsfksmty3flsfmsota=fnsm2e=fosfpsmtdkfqsmta=frsmw==fssahr0cdovl3v0cm8ucnuvyxj0awnszxmvmjaxn$8wmy8xni8xmjm3ndi3lnnodg1sftsahr0cdovl2v4lji0c21plm9yzy90b3avaw4vmtmwoti3lzezmdivp2k9mji2oczopwi0mte3zjvimwuwzjjingy4othkm2rlzgm1mtlimzg4fusahr0cdovl2v4lji0c21plm9yzy90b3avaw4vmtmwoti3lzezmdivp2k9mji2oczopwi0mte3zjvimwuwzjjingy4othkm2rlzgm1mtlimzg4fvsmq==fwsngjifxsnmy1fysndy1fasmty3fbsmq==fcsmq==fdsntu2fesmzaw"", ""timestamp"": 1426932913000}, {""url"": ""http://utro.ru/articles/2015/03/16/1237427.shtml"", ""timestamp"": 1426929130000}, {""url"": ""http://ru.redtram.com/cp/1470788694/n4p/2838?q=67adaebb3bf9b375ed697524285a98c4&page=1&pos=2"", ""timestamp"": 1426928706001}, {""url"": ""http://tainy.net/51268-tajny-korablej-prizrakov.html"", ""timestamp"": 1426928706000}, {""url"": ""http://tainy.net/51268-tajny-korablej-prizrakov.html"", ""timestamp"": 1426928191001}, {""url"": ""http://ex.24smi.org/top/in/130864/1302/?i=2268&h=44866d605afd37c0591975917fde958c"", ""timestamp"": 1426928191000}, {""url"": ""http://tainy.net/51268-tajny-korablej-prizrakov.html"", ""timestamp"": 1426928060001}, {""url"": ""http://ex.24smi.org/top/in/130864/1302/?i=2268&h=44866d605afd37c0591975917fde958c"", ""timestamp"": 1426928060000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/obzor/"", ""timestamp"": 1426921963001}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426921963000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426921953001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921953000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921924001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426921924000}, {""url"": ""http://www.koreamotor.ru/about/contacts/"", ""timestamp"": 1426921860001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426921860000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921745001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426921745000}, {""url"": ""http://koreamotor.ru/cars/nalichie/"", ""timestamp"": 1426921737001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921737000}, {""url"": ""http://koreamotor.ru/cars/"", ""timestamp"": 1426921730001}, {""url"": ""http://koreamotor.ru/cars/nalichie/"", ""timestamp"": 1426921730000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921727001}, {""url"": ""http://koreamotor.ru/cars/"", ""timestamp"": 1426921727000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426921726001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921726000}, {""url"": ""http://koreamotor.ru/cars/nalichie/"", ""timestamp"": 1426921717001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426921717000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426921708001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921708000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921701001}, {""url"": ""http://koreamotor.ru/cars/"", ""timestamp"": 1426921701000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price_2014/"", ""timestamp"": 1426921659001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921659000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price/"", ""timestamp"": 1426921643001}, {""url"": ""http://koreamotor.ru/cars/"", ""timestamp"": 1426921643000}, {""url"": ""http://koreamotor.ru/cars/"", ""timestamp"": 1426921635001}, {""url"": ""http://koreamotor.ru/cars/nalichie/"", ""timestamp"": 1426921635000}, {""url"": ""http://koreamotor.ru/cars/nalichie/"", ""timestamp"": 1426921586001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921586000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426921574001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426921574000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426881579001}, {""url"": ""http://www.rusprofile.ru/id/1375783"", ""timestamp"": 1426881579000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426881521001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0434\u0436\u0435\u043d\u0441\u0435\u0440 \u0441\u0435\u0440\u0432\u0438\u0441 \u044e17"", ""timestamp"": 1426881521000}, {""url"": ""http://www.prommetizcomplect.ru/catalog.php"", ""timestamp"": 1426881508001}, {""url"": ""http://www.prommetizcomplect.ru/catalog.php"", ""timestamp"": 1426881508000}, {""url"": ""http://www.prommetizcomplect.ru/catalog.php"", ""timestamp"": 1426881505001}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426881505000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426881491000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426881490001}, {""url"": ""http://nova.rambler.ru/search?scroll=1&utm_source=nhp&utm_campaign=noad&query=\u0434\u0436\u0435\u043d\u0441\u0435\u0440 \u0441\u0435\u0440\u0432\u0438\u0441 \u044e17"", ""timestamp"": 1426881490000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426881472001}, {""url"": ""http://comready.ru/company/5408810"", ""timestamp"": 1426881472000}, {""url"": ""https://mail.rambler.ru/#"", ""timestamp"": 1426863350001}, {""url"": ""http://weekend.rambler.ru/watch/page/vladimir_yaglych_s_devushkoj_antoninoj_papernoj"", ""timestamp"": 1426863350000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426837785001}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426837785000}, {""url"": ""https://mail.rambler.ru/#"", ""timestamp"": 1426837629001}, {""url"": ""http://news.rambler.ru/29648188/"", ""timestamp"": 1426837629000}, {""url"": ""http://www.eleks.ru/catalog/ford/mondeo/?gclid=ckwrlve2tsqcfrhltaodra4ahq"", ""timestamp"": 1426837244000}, {""url"": ""http://www.eleks.ru/catalog/ford/mondeo/?gclid=ckwrlve2tsqcfrhltaodra4ahq"", ""timestamp"": 1426837243000}, {""url"": ""http://news.rambler.ru/29654869/"", ""timestamp"": 1426778685000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1426756223001}, {""url"": ""http://news.rambler.ru/29625456/"", ""timestamp"": 1426756223000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426755965001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426755965000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426755959001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1426755959000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1426755289001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426755289000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426755278001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1426755278000}, {""url"": ""https://id.rambler.ru/logout?back=http://rambler.ru/&rname=mail"", ""timestamp"": 1426755264001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426755264000}, {""url"": ""https://id.rambler.ru/profile?back=https://mail.rambler.ru/&rname=mail"", ""timestamp"": 1426755263001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426755263000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426755252000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426755251001}, {""url"": ""http://finance.rambler.ru/news/curstock/159675498.html"", ""timestamp"": 1426755251000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price_2014/"", ""timestamp"": 1426706493001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426706493000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426706480001}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/obzor/"", ""timestamp"": 1426706480000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/obzor/"", ""timestamp"": 1426706461001}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426706461000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426706453001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426706453000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/price/"", ""timestamp"": 1426706410001}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426706410000}, {""url"": ""http://koreamotor.ru/cars/hyundai_grand_santa_fe/"", ""timestamp"": 1426706341001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426706341000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426706322001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426706322000}, {""url"": ""http://www.prommetizcomplect.ru/catalog.php"", ""timestamp"": 1426706294001}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426706294000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426706286000}, {""url"": ""http://www.prommetizcomplect.ru/partner/21278.html"", ""timestamp"": 1426706277001}, {""url"": ""http://nova.rambler.ru/search?utm_source=nhp&utm_campaign=noad&query=\u0434\u0436\u0435\u043d\u0441\u0435\u0440 \u0441\u0435\u0440\u0432\u0438\u0441 \u044e17"", ""timestamp"": 1426706277000}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7b29vlwr6agvuc2vylxnlcnzpcy15dte3lnj1c3npys1vchquy29tom5h&yclid=5843779009774347472"", ""timestamp"": 1426703861001}, {""url"": ""http://ooo-dzhenser-servis-yu17.russia-opt.com/"", ""timestamp"": 1426703861000}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7d3d3lmiyynnres5ydtpuyq&yclid=5843778114463213941"", ""timestamp"": 1426703698001}, {""url"": ""http://www.b2bsky.ru/companies/dzhenser_servis_yu17_ooo_2354522"", ""timestamp"": 1426703698000}, {""url"": ""http://www.eleks.ru/catalog/ford/mondeo/"", ""timestamp"": 1426703681001}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7d3d3lmiyynnres5ydtpuyq&yclid=5843778114463213941"", ""timestamp"": 1426703681000}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7d3d3lmiyynnres5ydtpuyq&yclid=5843778114463213941"", ""timestamp"": 1426703648000}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7d3d3lmiyynnres5ydtpuyq&yclid=5843778114463213941"", ""timestamp"": 1426703646000}, {""url"": ""http://www.eleks.ru/catalog/ford/?_openstat=zglyzwn0lnlhbmrlec5ydtsxmda0mzq1mds2mtiwndgxnta7d3d3lmiyynnres5ydtpuyq&yclid=5843778114463213941"", ""timestamp"": 1426703644001}, {""url"": ""http://www.b2bsky.ru/companies/dzhenser_servis_yu17_ooo_2354522"", ""timestamp"": 1426703644000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/price_2014/"", ""timestamp"": 1426698939001}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426698939000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426698904001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426698904000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426698873001}, {""url"": ""http://www.b2bsky.ru/companies/dzhenser_servis_yu17_ooo_2354522"", ""timestamp"": 1426698873000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426698753001}, {""url"": ""http://actez.ru/company/2076037"", ""timestamp"": 1426698753000}, {""url"": ""http://koreamotor.ru/cars/hyundai_santa_fe/"", ""timestamp"": 1426682412001}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426682412000}, {""url"": ""http://koreamotor.ru/actions/salon_actions/132/"", ""timestamp"": 1426682391001}, {""url"": ""http://news.rambler.ru/29633464/"", ""timestamp"": 1426682391000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426671264001}, {""url"": ""http://news.rambler.ru/29629056/"", ""timestamp"": 1426671264000}, {""url"": ""https://mail.rambler.ru/#/folder/"", ""timestamp"": 1426666676001}, {""url"": ""http://news.rambler.ru/29626957/"", ""timestamp"": 1426666676000}, {""url"": ""https://mail.rambler.ru/"", ""timestamp"": 1426666559001}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426666559000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426666347001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1426666347000}, {""url"": ""https://mail.rambler.ru/?utm_source=nhpi"", ""timestamp"": 1426658507001}, {""url"": ""http://www.rambler.ru/"", ""timestamp"": 1426658507000}, {""url"": ""https://id.rambler.ru/logout?back=http://rambler.ru/&rname=mail"", ""timestamp"": 1426658503001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426658503000}, {""url"": ""https://id.rambler.ru/profile?back=https://mail.rambler.ru/&rname=mail"", ""timestamp"": 1426658500001}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426658500000}, {""url"": ""https://mail.rambler.ru/#/folder/inbox/"", ""timestamp"": 1426658498001}, {""url"": ""http://news.rambler.ru/29587946/"", ""timestamp"": 1426658498000}]}"
+    F,25-34,d5090ddf-5648-487e-9caa-5cd8de4c60a4,"{""visits"": [{""url"": ""https://cfire.mail.ru/auth/register/?_1lr=54a015dc6cf29233-1150-2021683_1_6-2021683_1_6"", ""timestamp"": 1419777541435}, {""url"": ""http://petrovka-beauty.ru/abc/copper-vapor-laser"", ""timestamp"": 1419693547982}, {""url"": ""http://petrovka-beauty.ru/abc/plastic"", ""timestamp"": 1419693483097}, {""url"": ""http://petrovka-beauty.ru/abc/botox"", ""timestamp"": 1419693401610}]}"
+    F,25-34,d50bcef8-16ff-4e80-a9d5-9343698f4e7c,"{""visits"": [{""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426704753001}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426704753000}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426695703001}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426695703000}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426692749001}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426692749000}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp&ar=1"", ""timestamp"": 1426619386001}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp&ar=1"", ""timestamp"": 1426619386000}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426519275001}, {""url"": ""http://www.msn.com/ru-ru?pc=up97&ocid=up97dhp"", ""timestamp"": 1426519275000}, {""url"": ""http://gepatitu.net/hepatitb/kakovy.php"", ""timestamp"": 1426101096001}, {""url"": ""http://gepatitu.net/hepatitb/"", ""timestamp"": 1426101096000}, {""url"": ""http://gepatitu.net/hepatitb/"", ""timestamp"": 1426101085001}, {""url"": ""http://gepatitu.net/relative.php"", ""timestamp"": 1426101085000}, {""url"": ""http://gepatitu.net/relative.php"", ""timestamp"": 1426100896001}, {""url"": ""http://gepatitu.net/puti.php"", ""timestamp"": 1426100896000}, {""url"": ""http://gepatitu.net/puti.php"", ""timestamp"": 1426100687001}, {""url"": ""http://gepatitu.net/"", ""timestamp"": 1426100687000}, {""url"": ""http://gepatitu.net/"", ""timestamp"": 1426100635000}, {""url"": ""http://www.santechniki.com/post86192.html"", ""timestamp"": 1425234668000}, {""url"": ""https://www.avito.ru/sankt-peterburg/orgtehnika_i_rashodniki/faks_samsung_sf-360_501187224"", ""timestamp"": 1425220891000}, {""url"": ""http://sny-sonnik.ru/dream-book-kladbishche-1.html"", ""timestamp"": 1425196793000}, {""url"": ""http://sny-sonnik.ru/dream-book-kladbishche-1.html"", ""timestamp"": 1425196792000}, {""url"": ""http://sny-sonnik.ru/dream-book-kladbishche-1.html"", ""timestamp"": 1425196790001}, {""url"": ""http://yandex.ru/clck/jsredir"", ""timestamp"": 1425196790000}, {""url"": ""http://www.gadali.ru/gadanie-na-palochkah.php"", ""timestamp"": 1424627746001}, {""url"": ""http://yandex.ru/clck/jsredir?from=yandex.ru;yandsearch;web;;&text=&etext=607.x_qofoahxjxp3muas-qbbqjhae5nrulopwnp6zgjkjhuh4yqwqq7y3wf-msl0nloydyoid4rlnkrnzyqa7y__umrww_m3htlkgqssud0d04.6a912d33ee2fe3af601e3621094859d8138f3329&uuid=&state=aiuy0dbwfj4epaese6rgeajgs2pi3dw99kudgowt9xsmcv5tmmn9utqsqbnfqxrfy1qnk6_no62iytg7psgyxulw4uwhos5uenxjukiib2dwii3bp5ejkereklvmiucnnlu29-2szclzxnhdzbn7jcqsj1zl47pitulevzikeg7wexv9jtibflgth4gllwosvzb4ubsxlcv4sey43fpq2b8nuv35mlhw9ctybf3s4xlc0mv2tsfoyqyzysspexjeibewvoyn4ryoc5rnfmoqp488o2f93tpah8vn14tmyo2oqo-9wv8zw1zlizlhfrztke1jamswoyv5_0kilqo6fls4kr1xbdqr1drcll8rhqxsrjvcatuuvccxid4l57awkn_xryeofdwb6533pbtv9jxaneddkno76rbfvhhvfg7bdj3e3nhes_vylcmrfk0q7_q6c93r8tmejz4sou1ytsfncrpskmxw9g586axilzd8rs8x6d9jfq&data=ulnrnmk5wktyejr0ewjfyk1ldmtxcunxovfnbms5vviwtelqtuddvwhhz0q4atzosurcc0lhyug4qtvhwmrnsxbrnjjpx2o4bfpmwnm1uu4ynkh1u1hrbfpxnejwqu1tqut4x0m0nutzmzrkenbdvfh4mgdqouxfejl3nktlb1a&b64e=2&sign=984bdc4be19fb7a85749d3febe9759a3&keyno=0&ref=cm777e4smoaycdzhdubyhtkuseoilu3mrcs1bckzuv3q4nhj_fbmzc_2lypwllqxddkohkzmznyywrbb3d-vbcmnkp7xj_fqd2rtkspg5hktboop5h11sqls2pbkgbvt2rhnhwuimgccah8xn3x9_tsdki3eu4bzdb19ni3_qfx_cj78a6g8dgeqfblk_mpidz7ftzpjxfzzxffma-0gyfxtqqn3mj9rbsixmuhfnesxtwfzd4cmyf6ymqkjdek0kejluedjlf0fby9beeh1vnm2lyh1zctouez9unt6hcndjbowxmumoj5w2_snvmr1tz5jybm4_pvckbg1ie7vznigsrjocf9cnkbslxyepjm&l10n=ru&cts=1424627734480&mc=0"", ""timestamp"": 1424627746000}, {""url"": ""http://cache.betweendigital.com/code/bidder.html?user_id=17d340cc-b3ce-4ecb-8981-ef5d2e3668f2&cachebuster=1424606850"", ""timestamp"": 1424606852000}, {""url"": ""https://www.avito.ru/sankt-peterburg/orgtehnika_i_rashodniki/faks_samsung_sf-360_501187224?utm_source=avito_mail&utm_medium=email&utm_campaign=item_added&utm_content=snippet-itemname"", ""timestamp"": 1424603501000}, {""url"": ""http://www.vokrug.tv/article/show/chto_smotret_po_tv_v_den_svyatogo_valentina_46707/"", ""timestamp"": 1423973124001}, {""url"": ""http://yandex.ru/clck/jsredir"", ""timestamp"": 1423973124000}]}"
+    F,18-24,d50e23dc-0cbd-4883-bd6c-23ce65b511cc,"{""visits"": [{""url"": ""http://www.gazprom.ru/press/news/2014/april/article189137/"", ""timestamp"": 1419613709992}, {""url"": ""http://www.re-store.ru/apple-iphone/iphone-5s/16gb-gold/"", ""timestamp"": 1418939920736}, {""url"": ""http://www.re-store.ru/apple-iphone/iphone-5s/32gb-gold/"", ""timestamp"": 1418930885518}, {""url"": ""http://www.re-store.ru/apple-iphone/iphone-5s/32gb-gold/"", ""timestamp"": 1418930816821}, {""url"": ""http://www.re-store.ru/apple-iphone/iphone-6/iphone-6-gold-16gb/"", ""timestamp"": 1418930813613}, {""url"": ""http://www.guess.eu/ru/catalog/browse/autlet/muzhchiny/"", ""timestamp"": 1418929560224}, {""url"": ""http://www.guess.eu/ru/catalog/browse/autlet/"", ""timestamp"": 1418929538948}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/trendy/bestsellery/"", ""timestamp"": 1418929528681}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/trendy/"", ""timestamp"": 1418929515282}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/aksessuary/?page=3"", ""timestamp"": 1418929504124}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/aksessuary/?page=2"", ""timestamp"": 1418929491421}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/aksessuary/"", ""timestamp"": 1418929474199}, {""url"": ""http://www.guess.eu/ru/catalog/browse/muzhchiny/"", ""timestamp"": 1418929467032}, {""url"": ""http://www.guess.eu/ru/catalog/browse/idealnyy-podarok/dlya-nego/"", ""timestamp"": 1418929449258}, {""url"": ""http://www.guess.eu/ru/catalog/browse/autlet/"", ""timestamp"": 1418929436757}, {""url"": ""http://www.guess.eu/ru/catalog/browse/idealnyy-podarok/"", ""timestamp"": 1418929434918}, {""url"": ""http://www.guess.eu/ru/"", ""timestamp"": 1418929414148}, {""url"": ""http://www.giftbasket.ru/catalog/baskets/detail.php?id=3481"", ""timestamp"": 1418297371709}, {""url"": ""http://www.glaz.tv/online-tv/tnt"", ""timestamp"": 1426966073000}, {""url"": ""http://kaban.tv/m/tnt-online"", ""timestamp"": 1426964053000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426929367000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522154.htm"", ""timestamp"": 1426929358000}, {""url"": ""http://cdn.etgdta.com/etgifrm/zone/522155.htm"", ""timestamp"": 1426929312000}, {""url"": ""https://www.google.ru/"", ""timestamp"": 1426929286000}, {""url"": ""http://news.sportbox.ru/vidy_sporta/biatlon/gonka_presl_10_w"", ""timestamp"": 1426929118000}, {""url"": ""http://www.dni.ru/tech/2015/3/19/298193.html"", ""timestamp"": 1426791322000}, {""url"": ""http://kinobar.net/news/tv_shou_kholostjak_3_sezon_smotret_onlajn/2015-03-14-5324"", ""timestamp"": 1426763408000}, {""url"": ""http://kinobar.net/news/tv_shou_kholostjak_3_sezon_smotret_onlajn/2015-03-14-5324"", ""timestamp"": 1426695503000}, {""url"": ""http://dom2online.by/kholostyak-3-sezon-1-vypusk-07-03-2015-smotret-onlain.html"", ""timestamp"": 1426691579000}]}"
+    F,45-54,d50fdabb-4208-441b-ad35-bfa9c7a673ea,"{""visits"": [{""url"": ""http://lifenews.ru/"", ""timestamp"": 1427203859001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427203859000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427203551001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427203551000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427200198001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427200198000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1427199719000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426856452001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426856452000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426852535001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426852535000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426852338001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426852338000}, {""url"": ""http://www.situation.ru/app/j_art_22.htm"", ""timestamp"": 1426774543000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426773282001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426773282000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426773185001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426773185000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772955001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772955000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772897000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772751001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772751000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772646001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426772646000}, {""url"": ""http://teenslang.su/id/14499"", ""timestamp"": 1426771260000}, {""url"": ""http://rusvesna.su/third_world/1426677448"", ""timestamp"": 1426770844001}, {""url"": ""https://www.google.de/"", ""timestamp"": 1426770844000}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426770733001}, {""url"": ""http://lifenews.ru/"", ""timestamp"": 1426770733000}]}"
+
+
+
+```python
+%%time
+df = pd.read_csv('train_df.csv')  # читаем учебный датафрейм
+
+# словарь параметров для функции преобраования
+```
+
+    CPU times: user 5.58 s, sys: 1.12 s, total: 6.7 s
+    Wall time: 6.73 s
+
+
+
+```python
+df.gender.value_counts()  # одинкаковое распределение
+```
+
+
+
+
+    M    18698
+    F    17440
+    Name: gender, dtype: int64
+
+
+
+
+```python
+df.age.value_counts()  # неравномерное распределение
+```
+
+
+
+
+    25-34    15457
+    35-44     9360
+    18-24     4898
+    45-54     4744
+    >=55      1679
+    Name: age, dtype: int64
+
+
+
+
+```python
+# точность упала, не применяем. удалили 69% случайных значений с '25-34' и 48% '35-44', чтобы уравновесить выборку
+#df = df[df.age == '25-34'].sample(frac=.31)\
+#    .append(df[df.age == '35-44'].sample(frac=.52))\
+#    .append(df[df.age == '18-24'])\
+#    .append(df[df.age == '45-54'])\
+#    .append(df[df.age == '>=55'])   # не меняем  эту категорию, потому как их реально мало 
+
+```
+
+
+```python
+# наш учебный датасет весит больше 600мб. Разом засунуть в пандас не получится. 
+# Будем делать батчами по 361 наблюдению 101 раз.
+length = df.shape[0]
+step = int(length/100)
+iterations = int(length/step)+1
+print('length: {0}, step: {1}, iterations: {2}'.format(length, step, iterations))
+```
+
+    length: 36138, step: 361, iterations: 101
+
+
+
+```python
+%%time
+to_process = GetPreprocessedData().transform  # объявили функцией
+
+# Здесь мы готовим фичи для датасета.
+# Фичи: url, кол-во посещений, час, день недели. url - текст, остальные - цифры.
+# Перевели колличество посещений пользователя, урл, час, день недели по uid в столбец (мелт для таргетов),
+#   чтобы модель эффективно видела все посещения пользователя, а не смотрела лишь на начало строк
+#   в 2000 колонок  одному параметру наблюдения. А там 2000 * 3.
+```
+
+    CPU times: user 13 µs, sys: 3 µs, total: 16 µs
+    Wall time: 18.8 µs
+
+
+
+```python
+%%time
+
+start = 0
+end = start + step
+processed_df = pd.DataFrame()
+
+for i in tqdm(range(iterations)):
+    processed_df = processed_df.append(parallelize(df[start:end], to_process, cores=15))
+    start += step
+    end += step
+    if start > length:
+        print('start: {0}, end: {1}'.format(start, end))
+        pass
+```
+
+    100%|██████████| 101/101 [01:41<00:00,  1.01s/it]
+
+    start: 36461, end: 36822
+    CPU times: user 51.9 s, sys: 41.1 s, total: 1min 32s
+    Wall time: 1min 41s
+
+
+    
+
+
+
+```python
+print(processed_df.shape)
+```
+
+    (36138, 14)
+
+
+
+```python
+processed_df.head()
+```
+
+
+
+
+<div>
+<style scoped>
+    .dataframe tbody tr th:only-of-type {
+        vertical-align: middle;
+    }
+
+    .dataframe tbody tr th {
+        vertical-align: top;
+    }
+
+    .dataframe thead th {
+        text-align: right;
+    }
+</style>
+<table border="1" class="dataframe">
+  <thead>
+    <tr style="text-align: right;">
+      <th></th>
+      <th>gender</th>
+      <th>age</th>
+      <th>uid</th>
+      <th>url</th>
+      <th>most_frqnt_visit</th>
+      <th>counter</th>
+      <th>hour</th>
+      <th>latest</th>
+      <th>earliest</th>
+      <th>std_hour</th>
+      <th>dayofweek</th>
+      <th>end_week</th>
+      <th>bgn_week</th>
+      <th>std_week</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <th>0</th>
+      <td>F</td>
+      <td>18-24</td>
+      <td>d50192e5-c44e-4ae8-ae7a-7cfe67c8b777</td>
+      <td>zebra zoya ru news yandex ru sotovik ru news y...</td>
+      <td>2.0</td>
+      <td>5</td>
+      <td>8.0</td>
+      <td>13.0</td>
+      <td>6.0</td>
+      <td>2.561250</td>
+      <td>2.0</td>
+      <td>5.0</td>
+      <td>2.0</td>
+      <td>1.200000</td>
+    </tr>
+    <tr>
+      <th>1</th>
+      <td>M</td>
+      <td>25-34</td>
+      <td>d502331d-621e-4721-ada2-5d30b2c3801f</td>
+      <td>sweetrading ru sweetrading ru sweetrading ru 1...</td>
+      <td>49.0</td>
+      <td>102</td>
+      <td>18.0</td>
+      <td>23.0</td>
+      <td>0.0</td>
+      <td>4.538496</td>
+      <td>1.0</td>
+      <td>6.0</td>
+      <td>0.0</td>
+      <td>1.646504</td>
+    </tr>
+    <tr>
+      <th>2</th>
+      <td>F</td>
+      <td>25-34</td>
+      <td>d50237ea-747e-48a2-ba46-d08e71dddfdb</td>
+      <td>ru oriflame com ru oriflame com ru oriflame co...</td>
+      <td>23.0</td>
+      <td>44</td>
+      <td>14.0</td>
+      <td>18.0</td>
+      <td>14.0</td>
+      <td>1.229795</td>
+      <td>4.0</td>
+      <td>5.0</td>
+      <td>0.0</td>
+      <td>1.617792</td>
+    </tr>
+    <tr>
+      <th>3</th>
+      <td>F</td>
+      <td>25-34</td>
+      <td>d502f29f-d57a-46bf-8703-1cb5f8dcdf03</td>
+      <td>translate tattoo ru nadietah ru 1obl ru 1obl r...</td>
+      <td>12.0</td>
+      <td>14</td>
+      <td>12.0</td>
+      <td>19.0</td>
+      <td>9.0</td>
+      <td>3.519624</td>
+      <td>2.0</td>
+      <td>5.0</td>
+      <td>1.0</td>
+      <td>1.394230</td>
+    </tr>
+    <tr>
+      <th>4</th>
+      <td>M</td>
+      <td>&gt;=55</td>
+      <td>d503c3b2-a0c2-4f47-bb27-065058c73008</td>
+      <td>mail rambler ru news rambler ru mail rambler r...</td>
+      <td>66.0</td>
+      <td>212</td>
+      <td>10.0</td>
+      <td>20.0</td>
+      <td>6.0</td>
+      <td>5.189091</td>
+      <td>3.0</td>
+      <td>5.0</td>
+      <td>1.0</td>
+      <td>1.557547</td>
+    </tr>
+  </tbody>
+</table>
+</div>
+
+
+
+
+```python
+%%time
+# Выделяем только цифровые колонки
+numeric_columns = processed_df.columns.tolist()[4:]
+
+# Параметры модели
+model_params = {'age_labels': 'age',
+                'gender_labels': 'gender',
+                'uid': 'uid',
+                'text': 'url',
+                'numeric': numeric_columns,
+                'test_size': 0.2,
+                'random_seed': 25
+                }
+
+# Делим на трейн и тест датафрейм для обучения и валидации
+X_train, X_test, y_train, y_test = train_test_split(
+    processed_df[[model_params['uid']]
+                 + [model_params['text']]
+                 + model_params['numeric']],
+    processed_df[[model_params['gender_labels']]
+                 + [model_params['age_labels']]],
+    test_size=model_params['test_size'],
+    random_state=model_params['random_seed'])
+
+# переводим категориальные таргеты в бинарные слобцы
+y_train_dummified = dummify_labels(y_train)
+y_test_dummified = dummify_labels(y_test)
+
+print('X_train : {}, X_test : {}, y_train : {}, y_test : {}'.format(
+    X_train.shape,
+    X_test.shape,
+    y_train_dummified.shape,
+    y_test_dummified.shape))
+```
+
+    X_train : (28910, 12), X_test : (7228, 12), y_train : (28910, 7), y_test : (7228, 7)
+    CPU times: user 2.84 s, sys: 277 ms, total: 3.12 s
+    Wall time: 103 ms
+
+
+
+```python
+# Ожидаем колчиство уникальных url 30 000+ дальше уменьшим их до 1800 (~5%) самых значимых по расстоянию между ними.
+# В модель попадет 1800+3 = 1803 параметра на 7 бинарных классов
+#   ['gender_F', 'gender_M', 'age_18-24', 'age_25-34', 'age_35-44', 'age_45-54', 'age_>=55']
+#   (можно и 5 классов сделать, но тогда я не получу вероятность получения исключенного бинарного столбца,
+#   он мне будет нужен дальше, после обучения модели.)
+
+
+# ставим целевое колличество для выбора наиболее значимых слов-столбцов в спарс-матрице
+chi_k = 1800  # 36000 * 5%
+
+# Пайплайн
+pl = Pipeline([
+    ('union', FeatureUnion(
+        # Объединяем подготовленные данные
+        transformer_list=[
+
+            # Подготоваливаем текстовую часть данных
+            ('text_features', Pipeline([
+                ('selector', FunctionTransformer(get_text_data_func, validate=False)),
+                # Выбрали только текстовые столбцы
+                ('vectorizer', TfidfVectorizer()),
+                # создали спарс матрица по словам
+                ('dim_red', SelectKBest(chi2, k=chi_k))
+                # уменьшили размерность до 300
+            ])),
+
+            # Подготоваливаем цифровую часть данных
+            ('numeric_features', Pipeline([
+                ('selector', FunctionTransformer(get_numeric_data_func, validate=False)),
+                # Выбрали только числовые столбцы
+                ('imputer', Imputer())
+                # подготовка, проверка числовых данных
+            ]))
+        ]
+    )),
+
+    # Сама модель
+    ('scale', MaxAbsScaler()),  # sparse matrix нормализация
+    #('scale', StandardScaler(with_mean=False)),
+    ('clf', OneVsRestClassifier(LogisticRegression(max_iter=1000, n_jobs=15, solver='saga', penalty='elasticnet')))  # multiclass-multioutput classifier
+    # Старатегия на каждый класс запускать отдельный классификатор 1 за  / 7 против и выводить лучший со своим весом
+    #('clf', OneVsRestClassifier(SVC(probability=True, 
+#                                     max_iter=1000, 
+#                                     decision_function_shape='ovr', 
+#                                     random_state=43,
+#                                     kernel='sigmoid')))    
+    # c логистической регрессией
+])
+```
+
+
+```python
+# %%time
+# # Здесь учим на всем датасете
+# X = processed_df[[model_params['uid']]
+#                  + [model_params['text']]
+#                  + model_params['numeric']]
+# y = processed_df[[model_params['gender_labels']]
+#                  + [model_params['age_labels']]]
+
+# y_dummified = dummify_labels(y)
+
+# pl.fit(X,
+#        y_dummified)  # учим модель
+```
+
+
+```python
+%%time
+# Учим модель только на трейне
+pl.fit(X_train, y_train_dummified.values)  # учим модель
+```
+
+    CPU times: user 1min 41s, sys: 4.14 s, total: 1min 45s
+    Wall time: 38 s
+
+
+
+
+
+    Pipeline(memory=None,
+         steps=[('union', FeatureUnion(n_jobs=1,
+           transformer_list=[('text_features', Pipeline(memory=None,
+         steps=[('selector', FunctionTransformer(accept_sparse=False,
+              func=<function get_text_data_func at 0x7f0197fd58c8>,
+              inv_kw_args=None, inverse_func=None, kw_args=None,
+        ...state=None, solver='saga',
+              tol=0.0001, verbose=0, warm_start=False),
+              n_jobs=1))])
+
+
+
+
+```python
+%time
+# Предсказываем и сравниваем по трейн сету, в качестве валидатора, самописный Accuracy, проверяющий совпадение пар.
+y_train_pred_dummified = pl.predict_proba(X_train)  # Делаем предсказание по учебному датасету
+
+y_train_pred_proba_recovered = recover_index(X_train,
+                                       y_train_pred_dummified,
+                                       X_train,
+                                       y_train_dummified.columns.tolist(),
+                                       'uid')
+
+y_train_pred_proba_undummified = undummify_labels(pd.DataFrame(y_train_pred_proba_recovered,
+                                                 columns=y_train_dummified.columns.tolist()))
+print('Точность по учебному датасету = {0}'.format(project_accuracy(y_train, y_train_pred_proba_undummified)))
+```
+
+    CPU times: user 3 µs, sys: 1e+03 ns, total: 4 µs
+    Wall time: 7.63 µs
+    Точность по учебному датасету = 0.3236942234520927
+
+
+
+```python
+%time
+# Предсказываем и сравниваем по тест сету, в качестве валидатора, самописный Accuracy, проверяющий совпадение пар.
+y_test_pred_proba_dummified = pl.predict_proba(X_test)  # на тестовом датасете предсказали вероятности
+y_test_pred_dummified = pl.predict(X_test)  # на тестовом датасете предсказали классы
+
+
+y_test_pred_proba_recovered = recover_index(X_test,
+                                       y_test_pred_proba_dummified,
+                                       X_test,
+                                       y_train_dummified.columns.tolist(),
+                                       'uid')
+
+y_test_pred_proba_undummified = undummify_labels(pd.DataFrame(y_test_pred_proba_recovered,
+                                                 columns=y_test_dummified.columns.tolist()))
+print('Точность по учебному датасету = {0}'.format(project_accuracy(y_test, y_test_pred_proba_undummified)))
+```
+
+    CPU times: user 4 µs, sys: 0 ns, total: 4 µs
+    Wall time: 8.82 µs
+    Точность по учебному датасету = 0.29676258992805754
+
+
+
+```python
+%%time
+# Сохраняем модель, которая содержится в переменной pl
+model_file = "project01_model.pickle"
+
+with open('./' + model_file, 'wb') as f:
+    pickle.dump(pl, f)
+
+os.chmod('./' + model_file, 0o644)
+```
+
+    CPU times: user 3.45 s, sys: 991 ms, total: 4.44 s
+    Wall time: 4.5 s
+
