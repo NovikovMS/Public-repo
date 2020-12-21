@@ -252,31 +252,6 @@ spark
 
 
 
-
-
-            <div>
-                <p><b>SparkSession - in-memory</b></p>
-                
-        <div>
-            <p><b>SparkContext</b></p>
-
-            <p><a href="http://ubuntu-advanced-16-64-60gb.mcs.local:4040">Spark UI</a></p>
-
-            <dl>
-              <dt>Version</dt>
-                <dd><code>v3.0.1</code></dd>
-              <dt>Master</dt>
-                <dd><code>local[*]</code></dd>
-              <dt>AppName</dt>
-                <dd><code>Project02 misha</code></dd>
-            </dl>
-        </div>
-        
-            </div>
-        
-
-
-
 ### Читаем данные
 
 
