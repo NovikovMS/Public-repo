@@ -194,7 +194,7 @@ try:
 
 3. “Когда в руках молоток, все начинает напоминать гвоздь”. Думайте outside of the box.
 
-<img width="60px" align="left" style="margin-right:20px" src="./common/images/npl_logo.png"> <br /><b>Желаем вам удачи и успехов!</b>
+<img width="60px" align="left" style="margin-right:20px" src="./images/npl_logo.png"> <br /><b>Желаем вам удачи и успехов!</b>
 
 ## Ваше решение здесь
 
