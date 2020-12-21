@@ -1,11 +1,11 @@
 
-<img width="50px" align="left" style="margin-right:20px" src="../../common/images/npl_logo.png"> <b>New Professions Lab</b> <br /> Специалист по большим данным
+<img width="50px" align="left" style="margin-right:20px" src="../..images/npl_logo.png"> <b>New Professions Lab</b> <br /> Специалист по большим данным
 
 # Выпускной Проект
 
 # Построить content-based рекомендательную систему товаров интернет-магазина ozon.ru
 
-<img width="200px" align="left" src="../../common/images/ozon.png">
+<img width="200px" align="left" src="../../images/ozon.png">
 
 ### Задача
 
