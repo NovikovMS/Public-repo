@@ -112,7 +112,7 @@ from pyspark.sql.functions import rank, col
 from tqdm import tqdm
 ```
 
-Читаем данные 
+#### Читаем данные 
 
 
 ```python
@@ -628,7 +628,7 @@ from
 
 
 
-Оцениваем предыдущий подбор параметров===================================
+#### Оцениваем предыдущий подбор параметров
 
 
 ```python
@@ -641,7 +641,7 @@ sns.lineplot(data=als_model_results, x='rank', y='rmse', hue='regParam')
 plt.show()
 ```
 
-ALS ===============================================
+#### ALS
 
 
 ```python
@@ -776,6 +776,8 @@ cv = CrossValidator(estimator=als,
 als_model = cv.fit(train_als)
 ```
 
+Подбирали по RMSE, т.к. RegressionEvaluator не работает с ROC
+
     CPU times: user 594 ms, sys: 174 ms, total: 767 ms
     Wall time: 6min 53s
 
@@ -821,7 +823,7 @@ roc_auc_score(chk_val_als.purchase, chk_val_als.prediction)
 
 
 
-На скрытом датасете результат 0,89 что тоже хорошо.
+#### На скрытом датасете результат 0,89 что тоже хорошо.
 
 
 ```python
@@ -900,7 +902,7 @@ test_als.count() - preds_als.shape[0]
 ```
 
 
-пишем результат в файл ===============================================
+#### Пишем результат в файл
 
 
 ```python
