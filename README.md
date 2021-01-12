@@ -95,5 +95,12 @@
     
 
 
+#### Jovian https://jovian.ai/novikov-ms-in12/zerogans-protein-competition
+    Одна из работ по определению белков в клетках
+    
+    Обучение с учителем
+    Фича: картинка и лейбл
+    Решение: pandas + numpy + PyTorch + CNN
+    Точность: 0.79 косинусная близость
 
 
