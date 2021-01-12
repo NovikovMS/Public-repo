@@ -71,7 +71,13 @@
 
 
 #### Kaggle https://www.kaggle.com/novikovmikhail/word2vec-evaluating-good-comments
-    Kaggle word2vec-nlp-tutorial + NewProLab task
+    Одно из заданий NewProLab + Kaggle word2vec-nlp-tutorial 
+    Определяем положительность комментариев к фильмам по датасету IMDb
+    
+    Пандас, обучение с учителем.
+    Фича: таблица комментариев
+    Решение: CountVectorizer + RandomForest
+    Точность: 0.86 по ROC AUC
 
 
 #### Kaggle https://www.kaggle.com/novikovmikhail/cnn-steel-defect-detection
@@ -83,7 +89,7 @@
     Лидерборд ~0.89 
     
     Для меня пока тягаться смысла небыло зато уже красиво выделяет дефекты по маске.
-<img width="400px" align="left" src="./steel.png">
+<img width="600px" align="left" src="./steel.png">
     
 
 
