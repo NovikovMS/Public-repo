@@ -78,7 +78,7 @@
     Лидерборд ~0.89 
     
     Для меня пока тягаться смысла небыло зато уже красиво выделяет дефекты по маске.
-    <img width="400px" align="left" style="margin-right:20px" src="./steel.png">
+<img width="400px" align="left" src="./steel.png">
     
      
 
