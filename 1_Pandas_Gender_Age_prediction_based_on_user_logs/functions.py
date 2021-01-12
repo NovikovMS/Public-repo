@@ -59,10 +59,10 @@ class GetPreprocessedData:
 
     def transform(self, df_in):
         """
-        Основная рабочая функция класса делающаяя:
+        Основная рабочая функция класса:
         1. Делим user_json на два столбца мелтом с сырыми данными
         2. Извлекли хосты из сырых урл и положили обратно
-        3. Посчитали колличество посещений по timestamp добавили колонку 'counter'
+        3. Посчитали количество посещений по timestamp добавили колонку 'counter'
         4. Привели timestamp к datetime, вытащили из timestamp колонками часы и дни недели
         5. Сформировали лист целевых колонок с которыми вернет датафрейм
         """
@@ -75,7 +75,7 @@ class GetPreprocessedData:
         df_local, most_frqnt_cnt_col_name = self.extract_host_list(df_local, self.json_parsed_columns[0])
         # Извлекли хосты из сырых урл и положили обратно
         df_local, counter_col_name = self.add_counter_column(df_local, [self.json_parsed_columns[1]])
-        # Посчитали колличество посещений по timestamp добавили колонку 'counter'
+        # Посчитали количество посещений по timestamp добавили колонку 'counter'
         df_local, time_column_names = self.timestamps_to_mean_hour_dayofweek(df_local,
                                                                              self.numeric
                                                                              )
@@ -96,7 +96,7 @@ class GetPreprocessedData:
         Функция берет на вход сырую df с загрузки:
         1. выделяет j-son строку и парсит ее на лист словарей
         2. из словарей вытаскивает url, timestamp и складывает новой строкой в out_df url, timestamp, где
-        с входящей таблицы мы взяли 'age', 'gender', 'uid' по индексу строки которую парсили.
+        с входящей таблицы мы взяли 'age', 'gender', 'uid' по индексу строки, которую парсили.
         """
         df_local: pd.DataFrame = df_in.copy(deep=True)
         out_df = pd.DataFrame(data=None, columns=idx_columns+columns_out)  # age gender uid url timestamp
@@ -125,7 +125,7 @@ class GetPreprocessedData:
     @staticmethod
     def extract_host_list(df_in, column):
         """
-        Выбирает хосты из листа url таблице кладет обратно
+        Выбирает хосты и пути из листа url таблице кладет обратно мешком слов
         """
         df_local = df_in
         counter_col_name = 'most_frqnt_visit'
@@ -164,6 +164,7 @@ class GetPreprocessedData:
                 url = unquote(url, encoding='utf-8')  # преобразовали Unicode в UTF-8
                 u = urlparse(url)
 
+                # приводим idna хосты к читабельному виду
                 if u.hostname and 'xn--' in u.hostname:
                     try:
                         u_host = idna.decode(u.hostname)
@@ -181,7 +182,7 @@ class GetPreprocessedData:
                 #   u_fragment = u.fragment
 
 
-                u_host = u_host.replace('www.', '')  # заменяем www. и все что в списке
+                u_host = u_host.replace('www.', '')  # убираем www.
 
                 if u_host in drop_list or u_host is np.nan:  # убираем ошибки парсинга убираем NaN
                     pass
@@ -196,8 +197,10 @@ class GetPreprocessedData:
                 else:
                     tmp_u_path_list.append(u_path)  # наполняем лист значениями
 
-            df_local.loc[row_idx, counter_col_name] = max(Counter(tmp_u_host_list).values())
+            df_local.loc[row_idx, counter_col_name] = max(Counter(tmp_u_host_list).values()) 
+            # посчитали максимальное количество посещений 'любимого' сайта пользователя
 
+            # собираем словарь слов из пути и хоста
             for idx, host in enumerate(tmp_u_host_list):
                 for elem in replace_list:
                     tmp_u_host_list[idx] = tmp_u_host_list[idx].replace(elem, ' ')  # заменяем все что в списке
@@ -213,7 +216,7 @@ class GetPreprocessedData:
     @staticmethod
     def add_counter_column(df_in: pd.DataFrame, column, counter_col_name = 'counter'):
         """
-        делает столбец счетчик 'counter' где считает количество посещенных хостов по записи времени
+        делает столбец счетчик 'counter' где считает количество всех посещенных хостов по записи времени
         """
         df_local = df_in
         df_local[counter_col_name] = np.nan
@@ -226,7 +229,7 @@ class GetPreprocessedData:
     @staticmethod
     def timestamps_to_mean_hour_dayofweek(df_in, columns):
         """
-        вытаскивает из timestamp mean час дня и день недели на колонки hour dayofweek
+        вытаскивает из timestamp mean час дня, день недели...  на колонки
         """
         df_local = df_in
         hour_col_names = ['hour']
@@ -303,7 +306,7 @@ def undummify_labels(df_dimmies, ignore_list=None, top=None, prefix_sep="_"):
     if ignore_list is None:
         ignore_list = ['user_json', ]
 
-    # получили словарь имен столбцов раметров в виде {gender:True, age: True}
+    # получили словарь имен столбцов параметров в виде {gender:True, age: True}
     cols2collapse = {}
     for item in df_dimmies.columns.tolist():
         if prefix_sep in item:
