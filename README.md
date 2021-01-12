@@ -69,6 +69,11 @@
     Решение c факторизацией оценок 130 000 x 130 000 матрицы батчами ~ 1 час 40 мин, 
         подбор параметров займет около недели, точность 0,19 
 
+
+#### Kaggle https://www.kaggle.com/novikovmikhail/word2vec-evaluating-good-comments
+    Kaggle word2vec-nlp-tutorial + NewProLab task
+
+
 #### Kaggle https://www.kaggle.com/novikovmikhail/cnn-steel-defect-detection
     Самостоятельная работа по изучению Semantic segmentation на датасете от Северстали
     и сданая как квалификационная работа курса от Jovian: PyTorch Zero to Gans
@@ -80,8 +85,7 @@
     Для меня пока тягаться смысла небыло зато уже красиво выделяет дефекты по маске.
 <img width="400px" align="left" src="./steel.png">
     
-     
 
-#### Kaggle https://www.kaggle.com/novikovmikhail/word2vec-evaluating-good-comments
-    Kaggle word2vec-nlp-tutorial
+
+
 
