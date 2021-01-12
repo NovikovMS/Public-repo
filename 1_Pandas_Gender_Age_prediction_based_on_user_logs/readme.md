@@ -452,12 +452,12 @@ y_test_pred_proba_recovered = recover_index(X_test,
 
 y_test_pred_proba_undummified = undummify_labels(pd.DataFrame(y_test_pred_proba_recovered,
                                                  columns=y_test_dummified.columns.tolist()))
-print('Точность по учебному датасету = {0}'.format(project_accuracy(y_test, y_test_pred_proba_undummified)))
+print('Точность по тестовому датасету = {0}'.format(project_accuracy(y_test, y_test_pred_proba_undummified)))
 ```
 
     CPU times: user 4 µs, sys: 0 ns, total: 4 µs
     Wall time: 8.82 µs
-    Точность по учебному датасету = 0.29676258992805754
+    Точность по тестовому датасету = 0.29676258992805754
 
 
 
