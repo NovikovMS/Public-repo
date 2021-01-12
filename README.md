@@ -76,6 +76,7 @@
 
 
 #### Jovian https://jovian.ai/novikov-ms-in12/zerogans-protein-competition
+    Задание из курса Jovian: PyTorch Zero to Gans
     Одна из работ по определению белков в клетках
     
     Обучение с учителем
