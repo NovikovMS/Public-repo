@@ -83,9 +83,11 @@
 #### Kaggle https://www.kaggle.com/novikovmikhail/cnn-steel-defect-detection
     Самостоятельная работа по изучению Semantic segmentation на датасете от Северстали
     и сданая как квалификационная работа курса от Jovian: PyTorch Zero to Gans
-    
-    Точность 
-    Phase: val | Epoch: 7 | Loss: 0.0231 | F: 0.5274 | IoU: 0.4243 | Dice: 0.5274
+   
+    Обучение с учителем.
+    Фича: размеченные маски к изображениям + изображения
+    Решение: pandas + numpy + PyTorch + U-CNN
+    Точность: Epoch: 7 | Loss: 0.0231 | F: 0.5274 | IoU: 0.4243 | Dice: 0.5274
     Лидерборд ~0.89 
     
     Для меня пока соревноваться смысла небыло, зато уже красиво выделяет дефекты по маске.
