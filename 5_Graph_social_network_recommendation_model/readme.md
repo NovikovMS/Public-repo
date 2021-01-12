@@ -448,7 +448,7 @@ train_df = (train_exploded_df
 
 Данных 9 гб. Времени просчитать 1 неделя. 
 Считать через: 
-cossim по котексту c дроблением ~ 14 дней,
+cossim по котексту c дроблением ~ 19 дней,
 ALS подбор параметров на итерацию с дроблением на батчи ~ 1 час 40 мин, подбирать примерно 5 дней или больше...
 Самые быстрые варианты Pagerank или Graph ~ 10 мин.
 
@@ -557,7 +557,7 @@ itemsToPredict_list[0:10]
 
 
 ```python
-# делаем функцию где собираем треуголную матрицу возможных пар соседей (сосед-сосед) с нашими таргетами
+# делаем функцию где собираем треугольную матрицу возможных пар соседей (сосед-сосед) с нашими таргетами
 def pairs_with_common_reference(list_of_items):
     pairs = []
     length = len(list_of_items)
@@ -583,7 +583,7 @@ pairs_with_common_reference_UDF = F.udf(pairs_with_common_reference, schema)
 
 
 ```python
-# примениил функцию и посчитали пары соседей, смотрим пары
+# применил функцию и посчитали пары соседей, смотрим пары
 common_reference_counts = (items_with_common_reference_df
                            .select(pairs_with_common_reference_UDF('sorted_items_with_common_reference').alias("pairs_with_common_reference"))
                            .where(F.size(F.col("pairs_with_common_reference")) > 0)
@@ -621,7 +621,7 @@ common_reference_counts.show(20, truncate=100)
 
 
 ```python
-# пара итемов и их счетчик их повторений по датасету
+# пара итемов и счетчик их повторений по датасету
 target = (common_reference_counts
      .withColumn("pair_with_common_reference", F.explode("pairs_with_common_reference"))
      .drop(F.col("pairs_with_common_reference"))
@@ -849,7 +849,7 @@ output_df.toPandas().to_json('project02.txt', orient='records', lines=True)
 
 ```python
 ## Грузим результат в чекер.   
-## Graph дал 0,12%  при 0,0005 сек/ит. 
+## Graph дал 0,13%  при 0,0005 сек/ит. 
 ## Быстро. Задание выполненио малой кровью.
 ```
 
