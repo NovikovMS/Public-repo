@@ -1,0 +1,6 @@
+<ASX version ="3.0">
+  <TITLE>Home stream</TITLE>
+  <ENTRY>
+    <REF HREF="http://127.0.0.1:8554/stream.ts" />
+  </ENTRY>
+</ASX>
