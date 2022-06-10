@@ -1,7 +1,7 @@
 __author__ = "Mikhail Novikov"
 __email__ = "novikov.ms.in12@gmail.com"
 __status__ = "Production"
-__license__ = "GPLv3"
+__license__ = "MIT"
 
 
 import socket
