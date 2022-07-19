@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  dind:
+    image: docker:20-dind
+    restart: always
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command:
+      - --storage-driver=overlay2
+
+  gitlab-runner:
+    restart: always
+    image: registry.gitlab.com/gitlab-org/gitlab-runner:ubuntu
+    depends_on:
+      - dind
+    environment:
+      - DOCKER_HOST=tcp://dind:2375
+    volumes:
+      - ./Docker/gitlab/gitlab_runner/config/:/etc/gitlab-runner:z
+
+  register-runner:
+    restart: 'no'
+    image: registry.gitlab.com/gitlab-org/gitlab-runner:ubuntu
+    depends_on:
+      - dind
+    environment:
+      - CI_SERVER_URL=${CI_SERVER_URL}
+      - REGISTRATION_TOKEN=${REGISTRATION_TOKEN}
+    command:
+      - register
+      - --non-interactive
+      - --locked=false
+      - --name=${RUNNER_NAME}
+      - --run-untagged=true
+      - --executor=docker
+      - --docker-image=docker:20-dind
+      - --docker-volumes=/var/run/docker.sock:/var/run/docker.sock
+    volumes:
+      - ./Docker/gitlab/gitlab_runner/config/:/etc/gitlab-runner:z
+
+  minio:
+    container_name: minio
+    hostname: minio
+    image: quay.io/minio/minio:RELEASE.2022-05-08T23-50-31Z
+    command: server --console-address ":9001" /data/
+    expose:
+      - "9000"
+      - "9001"
+    networks:
+      - s3
+    environment:
+      MINIO_ROOT_USER: ${AWS_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${AWS_SECRET_ACCESS_KEY}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+    volumes:
+      - ./Docker/minio/:/data
+
+  nginx:
+    image: nginx:1.19.2-alpine
+    container_name: nginx
+    hostname: nginx
+    volumes:
+      - ./Docker/nginx.conf:/etc/nginx/nginx.conf:ro
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    networks:
+      - s3
+    depends_on:
+      - minio
+
+
+  db:
+    container_name: postgres
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      PGDATA: /data/postgres
+    volumes:
+       - postgres:/data/postgres
+    ports:
+      - "5432:5432"
+    networks:
+      - postgres
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4
+    restart: always
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@admin.com
+      PGADMIN_DEFAULT_PASSWORD: root
+    volumes:
+       - ./Docker/pgadmin/:/var/lib/pgadmin:rw
+    ports:
+      - "5050:80"
+    networks:
+      - postgres
+
+  mlflow:
+    build:
+      context: .
+      dockerfile: ./Docker/mlflow_image/Dockerfile
+#    image: 127.0.0.1:8123/mlflow_server:latest
+    restart: always
+    container_name: mlflow_server
+    ports:
+      - "5000:5000"
+    networks:
+      - postgres
+      - s3
+    environment:
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - MLFLOW_S3_ENDPOINT_URL=http://nginx:9000
+    command: mlflow server --backend-store-uri postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db/${POSTGRES_DB} --default-artifact-root s3://${AWS_S3_BUCKET}/ --host 0.0.0.0
+
+  nexus:
+    image: sonatype/nexus3:latest
+    container_name: nexus
+    ports:
+      - "8081:8081"
+      - "8123:8123"
+    volumes:
+      - ./Docker/nexus-data/:/nexus-data:rw
+
+networks:
+  postgres:
+    driver: bridge
+  s3:
+    driver: bridge
+
+volumes:
+  postgres:
